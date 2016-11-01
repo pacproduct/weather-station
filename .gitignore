@@ -35,3 +35,5 @@ jspm_packages
 
 # Optional REPL history
 .node_repl_history
+/system/etc/wpa_supplicant/wpa_supplicant.conf
+/.project

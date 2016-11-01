@@ -1,0 +1,25 @@
+{
+  "name": "WeatherStation",
+  "version": "0.1.0",
+  "description": "WeatherStation",
+  "private": true,
+  "main": "weather_station.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified! Configure in package.json\" && exit 1"
+  },
+  "repository": "",
+  "keywords": [
+    "Node.js",
+    "Eclipse",
+    "Nodeclipse"
+  ],
+  "author": "",
+  "license": "BSD",
+  "readmeFilename": "README.md",
+  "dependencies": {
+    "connect": "~2.7.8",
+    "socket.io": "~0.9.16",
+    "sqlite3": "~2.2.3",
+    "minimist": "~1.1.0"
+  }
+}

@@ -1,0 +1,9 @@
+﻿- Change everything so the back is a standard REST API. Use socket.io only if real time is needed. Otherwise we should probably get rid of it.
+
+- (Frontend) [BUG]: Why is the temperature scale not automatically adjusting itself correctly sometimes?
+
+- (Backend): https://thomashunter.name/blog/running-a-node-js-process-on-debian-as-an-init-d-service/
+
+- (Backend): React to system events (to prevent killing the process when shutting down linux): http://stackoverflow.com/questions/6958780/quitting-node-js-gracefully (second reply)
+
+- (Backend): Make it possible to calibrate the temperature probe.

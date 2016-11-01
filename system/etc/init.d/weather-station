@@ -1,0 +1,27 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          weather-station
+# Required-Start:
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Weather Station init script.
+### END INIT INFO
+
+# Operations.
+case "$1" in
+  start)
+    echo "Starting Weather Station"
+    cd /home/pi/weather_station
+    /opt/node/bin/node weather_station.js &
+    ;;
+  stop)
+    echo "Stopping the Weather Station hasn't been implemented :("
+    ;;
+  *)
+    echo "Usage: /etc/init.d/weather-station start"
+    exit 1
+    ;;
+esac
+
+exit 0
