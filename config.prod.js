@@ -20,18 +20,28 @@ config.httpPort = 8080;
 // -- Weather data retrieval --
 
 // Retrieve weather data every... (seconds):
-config.weatherDataDelaySeconds = 300;
+config.weatherDataDelaySeconds = 60;
 // Max number of tries before aborting a weather data retrieval from the probe:
 // Warning: weatherDataRetrievalMaxNoTries*weatherDataRetrievalTriesDelay should
 // be < weatherDataDelaySeconds.
-config.weatherDataRetrievalMaxNoTries = 20;
+config.weatherDataRetrievalMaxNoTries = 10;
 // Time to wait before a new weather data retrieval try (seconds):
 config.weatherDataRetrievalTriesDelay = 4;
-// Path to executable retrieving weather data from the probe:
-config.pathToWeatherCmd = 'sudo';
-// Parameter to send to the weather executable:
-// Note: The first parameter sent to DHT_reader is the captor type (11, 22 or 2302), and the second is the communication pin.
-config.parametersToWeatherCmd = ['/home/pi/weather_station/DHT_driver/DHT_reader', '22', '14'];
+//Probes.
+config.probes = [
+  {
+    id: 1,
+    command: 'sudo',
+    commandParameters: ['./DHT_driver/DHT_reader', '22', '14'],
+  },
+  /*
+  {
+    id: 2,
+    command: 'sudo',
+    commandParameters: ['./DHT_driver/DHT_reader', '22', '15'],
+  },
+  */
+];
 
 
 // -- Weather data storage --

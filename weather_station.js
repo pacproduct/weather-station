@@ -4,13 +4,13 @@
 
 // ---- REQUIRES ----
 
-// Core and contribution modules:
+// Core and vendor libraries:
 var http = require('http');
 var io = require('socket.io');
 var connect = require('connect');
 var argvParser = require('minimist');
 
-// Custom modules:
+// Custom libraries:
 var WeatherStationDatabase = require('./modules/weather_station_database');
 
 
@@ -25,7 +25,7 @@ var WeatherStationDatabase = require('./modules/weather_station_database');
 
 
 
-// ---- Load parameters passed in on the commandline ----
+// ---- Load parameters passed in on the command-line ----
 
 var argv = argvParser(process.argv.slice(2));
 
@@ -107,31 +107,38 @@ wsdb.log(wsdb.WSDB_LOG_INFO, 'Weather station started.');
 
 // Loop retrieving weather data every once in a while:
 // Initial call:
-getAndSaveWeatherData();
+getAllProbeData();
 // Recurrent calls:
-setInterval(getAndSaveWeatherData, config.weatherDataDelaySeconds * 1000);
+setInterval(getAllProbeData, config.weatherDataDelaySeconds * 1000);
 
 
 
 
 // ---- Functions ----
 
+function getAllProbeData() {
+  // Loop over probes and get/save their data.
+  for (var i = 0; i < config.probes.length; i++) {
+    getAndSaveProbeData(config.probes[i]);
+  }
+}
+
 /**
- * Retrieves weather data, and store it.
+ * Retrieves weather data, and stores it.
  *
  * @param int try_no
  *   Number of the current try. If this number reaches
  *   config.weatherDataRetrievalMaxNoTries, this function aborts.
  *   Note: Should be initialized at 1. If undefined, will be set to 1.
  */
-function getAndSaveWeatherData(try_no) {
+function getAndSaveProbeData(probeConfig, try_no) {
   // Initialize no of try, if not defined:
   try_no = try_no || 1;
 
   // Debug:
   if (config.debugMode) {
-    var nw = new Date();
-    console.log(nw.toISOString() + ': getAndSaveWeatherData(' + try_no + ')');
+    var nowDate = new Date();
+    console.log(nowDate.toISOString() + ': getAndSaveProbeData(' + try_no + ')');
   }
   // Debug.
 
@@ -140,10 +147,13 @@ function getAndSaveWeatherData(try_no) {
   // synchronized with a Time Server before saving data!
 
   // Retrieve weather data:
-  queryWeatherData(function(weatherData) {
+  queryDataFromOneProbe(probeConfig, function(weatherData) {
+    // DEBUG:
+    console.log(weatherData);
+    ///DEBUG.
     if (weatherData.valid) {
       // Save retrieved data:
-      wsdb.saveWeatherData(null, weatherData.temperature, weatherData.humidity);
+      wsdb.saveWeatherData(null, probeConfig.id, weatherData.temperature, weatherData.humidity);
     }
     else {
       var error_msg = '';
@@ -151,14 +161,19 @@ function getAndSaveWeatherData(try_no) {
       // If weather data retrieval failed, try again if we did not reach the max
       // number of tries:
       if (try_no < config.weatherDataRetrievalMaxNoTries) {
-        setTimeout(getAndSaveWeatherData, config.weatherDataRetrievalTriesDelay * 1000, try_no + 1);
+        setTimeout(
+          function() {
+            getAndSaveProbeData(probeConfig, try_no + 1);
+          },
+          config.weatherDataRetrievalTriesDelay * 1000
+        );
 
-        error_msg = 'getAndSaveWeatherData() failed (attempt no ' + try_no + ').';
+        error_msg = 'getAndSaveProbeData() failed (attempt no ' + try_no + ').';
 
         wsdb.log(wsdb.WSDB_LOG_NOTICE, error_msg);
       }
       else {
-        error_msg = 'getAndSaveWeatherData() failed ' + try_no + ' times. Aborting.';
+        error_msg = 'getAndSaveProbeData() failed ' + try_no + ' times. Aborting.';
 
         wsdb.log(wsdb.WSDB_LOG_WARNING, error_msg);
       }
@@ -181,9 +196,9 @@ function getAndSaveWeatherData(try_no) {
  *   You should check the 'valid' property before using other properties.
  *   If the probe did not return valid data, this 'valid' bool would be false.
  */
-function queryWeatherData(callBack) {
+function queryDataFromOneProbe(probeConfig, callBack) {
   // Retrieve data from probe:
-  run_cmd(config.pathToWeatherCmd, config.parametersToWeatherCmd, function(weatherData) {
+  run_cmd(probeConfig.command, probeConfig.commandParameters, function(weatherData) {
     var result = {
       temperature: 0.0,
       humidity: 0.0,
@@ -192,8 +207,8 @@ function queryWeatherData(callBack) {
 
     // Debug:
     if (config.debugMode) {
-      var nw = new Date();
-      console.log(nw.toISOString() + ': >> queryWeatherData returned [' + weatherData + ']');
+      var nowDate = new Date();
+      console.log(nowDate.toISOString() + ': >> queryDataFromOneProbe returned [' + weatherData + ']');
     }
     // Debug.
 
@@ -245,6 +260,9 @@ function handleNewSocketIOClient(socket) {
  *   Given function will receive the command output as parameter.
  */
 function run_cmd(cmd, args, callBack) {
+  //DEBUG:
+  console.log([cmd, args]);
+  //DEBUG.
   var spawn = require('child_process').spawn;
   var child = spawn(cmd, args);
   var resp = '';

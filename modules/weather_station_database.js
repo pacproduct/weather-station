@@ -64,25 +64,27 @@ function WeatherStationDatabase(databaseFile, options) {
     this.run(
       "CREATE TABLE IF NOT EXISTS logs (" +
       "id INTEGER PRIMARY KEY, " +
-      "timestamp INTEGER DEFAULT (strftime('%s', 'now')), " +
-      "type INTEGER, " +
-      "message TEXT" +
+      "timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), " +
+      "type INTEGER NOT NULL, " +
+      "message TEXT NOT NULL DEFAULT '' " +
       ");"
     );
 
     // Column definition common to all data tables:
     var common_data_columns =
-      "timestamp INTEGER DEFAULT (strftime('%s', 'now')) PRIMARY KEY, " +
-      "temperature REAL, " +
-      "humidity REAL";
+      "id INTEGER PRIMARY KEY, " +
+      "timestamp INTEGER DEFAULT (strftime('%s', 'now')), " +
+      "probe_id INTEGER NOT NULL, " +
+      "temperature REAL NOT NULL, " +
+      "humidity REAL NOT NULL";
 
     // Extra columns common to per_* tables:
     var common_per_columns = "," +
-      "min_temperature REAL, " +
-      "max_temperature REAL, " +
-      "min_humidity REAL, " +
-      "max_humidity REAL, " +
-      "number_values INTEGER";
+      "min_temperature REAL NOT NULL, " +
+      "max_temperature REAL NOT NULL, " +
+      "min_humidity REAL NOT NULL, " +
+      "max_humidity REAL NOT NULL, " +
+      "number_values INTEGER NOT NULL";
 
     // Weather raw data table:
     this.run("CREATE TABLE IF NOT EXISTS data_raw (" + common_data_columns + ");");
@@ -100,6 +102,8 @@ function WeatherStationDatabase(databaseFile, options) {
  * @param int|null timestamp
  *   Timestamp of the measure, in seconds. Set to null to default to the current
  *   timestamp.
+ * @param int probeId
+ *   Identifier of the probe.
  * @param float temperature
  *   Temperature to record.
  * @param float humidity
@@ -109,7 +113,7 @@ function WeatherStationDatabase(databaseFile, options) {
  *   function(err) where err is the error if any occurred, null otherwise.
  *   Optional. If none provided, an error will be raised if one occurred.
  */
-WeatherStationDatabase.prototype.saveWeatherData = function(timestamp, temperature, humidity, callback) {
+WeatherStationDatabase.prototype.saveWeatherData = function(timestamp, probeId, temperature, humidity, callback) {
   var self = this;
 
   self.dbRun('BEGIN;', {}, function(err) {
@@ -118,19 +122,19 @@ WeatherStationDatabase.prototype.saveWeatherData = function(timestamp, temperatu
     }
 
     // Insert in database:
-    insertRawData(self, timestamp, temperature, humidity, function(err) {
+    insertRawData(self, timestamp, probeId, temperature, humidity, function(err) {
       if (err) {
         self.log('Error while executing insertRawData(wsdb, ' + timestamp + ', ' + temperature + ', ' + humidity + ', callback): ' + util.inspect(self.WSDB_LOG_ERROR), err);
       }
 
       // Insert/Update per HOUR averages:
-      addAndUpdatePerHourAverages(self, timestamp, temperature, humidity, function(err) {
+      addAndUpdatePerHourAverages(self, timestamp, probeId, temperature, humidity, function(err) {
         if (err) {
           self.log('Error while executing addAndUpdatePerHourAverages(wsdb, ' + timestamp + ', ' + temperature + ', ' + humidity + ', callback): ' + util.inspect(self.WSDB_LOG_ERROR), err);
         }
 
         // Insert/Update per DAY averages:
-        addAndUpdatePerDayAverages(self, timestamp, temperature, humidity, function(err) {
+        addAndUpdatePerDayAverages(self, timestamp, probeId, temperature, humidity, function(err) {
           if (err) {
             self.log('Error while executing addAndUpdatePerDayAverages(wsdb, ' + timestamp + ', ' + temperature + ', ' + humidity + ', callback): ' + util.inspect(self.WSDB_LOG_ERROR), err);
           }
@@ -213,6 +217,7 @@ WeatherStationDatabase.prototype.deleteWeatherData = function(timestamp, callbac
  *     data: [
  *       {
  *         timestamp: int (in seconds),
+ *         probe_id: int,
  *         temperature: float,
  *         humidity: float,
  *         min_temperature: float, *
@@ -283,7 +288,7 @@ WeatherStationDatabase.prototype.getWeatherData = function(timestamp_start, time
   // DEBUG.
 
   // Prepare list of columns to select:
-  var columns = 'timestamp, temperature, humidity';
+  var columns = 'timestamp, probe_id, temperature, humidity';
   if (data_table != 'data_raw') {
     columns = columns + ', min_temperature, max_temperature, min_humidity, max_humidity, number_values';
   }
@@ -447,6 +452,8 @@ WeatherStationDatabase.prototype.dbAll = function(sql, param, callback) {
  * @param int|null timestamp
  *   Timestamp of the measure, in seconds. Set to null to default to the current
  *   timestamp.
+ * @param int probeId
+ *   Identifier of the probe.
  * @param float temperature
  *   Temperature to insert.
  * @param float humidity
@@ -456,15 +463,15 @@ WeatherStationDatabase.prototype.dbAll = function(sql, param, callback) {
  *   function(err) where err is the error if any occurred, null otherwise.
  *   Optional. If none provided, an error will be raised if one occurred.
  */
-function insertRawData(wsdb, timestamp, temperature, humidity, callback) {
+function insertRawData(wsdb, timestamp, probeId, temperature, humidity, callback) {
   // If timestamp is null, initialize it:
   if (timestamp === null) {
     timestamp = Math.round(Date.now() / 1000);
   }
 
   wsdb.dbRun(
-    "INSERT INTO data_raw(timestamp, temperature, humidity) VALUES ($ts, $t, $h);",
-    {$ts: timestamp, $t: temperature, $h: humidity},
+    "INSERT INTO data_raw(timestamp, probe_id, temperature, humidity) VALUES ($ts, $pid, $t, $h);",
+    {$ts: timestamp, $pid: probeId, $t: temperature, $h: humidity},
     callback
   );
 }
@@ -496,6 +503,8 @@ function deleteRawData(wsdb, timestamp, callback) {
  * @param int|null timestamp
  *   Timestamp of the measure, in seconds. Set to null to default to the current
  *   timestamp.
+ * @param int probeId
+ *   Identifier of the probe.
  * @param float temperature
  *   Temperature to take into account to adjust the average and min/max.
  * @param float humidity
@@ -505,7 +514,7 @@ function deleteRawData(wsdb, timestamp, callback) {
  *   function(err) where err is the error if any occurred, null otherwise.
  *   Optional. If none provided, an error will be raised if one occurred.
  */
-function addAndUpdatePerHourAverages(wsdb, timestamp, temperature, humidity, callback) {
+function addAndUpdatePerHourAverages(wsdb, timestamp, probeId, temperature, humidity, callback) {
   // If timestamp is null, initialize it to now:
   if (timestamp === null) {
     timestamp = Math.round(Date.now() / 1000);
@@ -515,6 +524,7 @@ function addAndUpdatePerHourAverages(wsdb, timestamp, temperature, humidity, cal
     wsdb,
     'data_per_hour',
     timestampFromPattern(timestamp, '%Y-%M-%d-%H-00-00'),
+    probeId,
     temperature,
     humidity,
     callback
@@ -524,7 +534,7 @@ function addAndUpdatePerHourAverages(wsdb, timestamp, temperature, humidity, cal
 /**
  * Same as addAndUpdatePerHourAverages(), but for the 'PER DAY' table.
  */
-function addAndUpdatePerDayAverages(wsdb, timestamp, temperature, humidity, callback) {
+function addAndUpdatePerDayAverages(wsdb, timestamp, probeId, temperature, humidity, callback) {
   // If timestamp is null, initialize it to now:
   if (timestamp === null) {
     timestamp = Math.round(Date.now() / 1000);
@@ -534,6 +544,7 @@ function addAndUpdatePerDayAverages(wsdb, timestamp, temperature, humidity, call
     wsdb,
     'data_per_day',
     timestampFromPattern(timestamp, '%Y-%M-%d-00-00-00'),
+    probeId,
     temperature,
     humidity,
     callback
@@ -543,7 +554,7 @@ function addAndUpdatePerDayAverages(wsdb, timestamp, temperature, humidity, call
 /**
  * Helper converting given timestamp to its rounded up version, in step with
  * given date pattern. Example:
- * If you give a timestamp a,d the following pattern: '%Y-%M-%d-12-00-00', this
+ * If you give a timestamp and the following pattern: '%Y-%M-%d-12-00-00', this
  * function would return the timestamp corresponding to given timestamp's day,
  * at 12 o'clock.
  *
@@ -592,6 +603,8 @@ function timestampFromPattern(timestamp, pattern) {
  * @param int timestamp
  *   Timestamp in seconds corresponding to the entry holding averages and
  *   min/max to update in the database.
+ * @param int probeId
+ *   Identifier of the probe.
  * @param float temperature
  *   Temperature to apply to the average & min/max entry.
  * @param float humidity
@@ -601,7 +614,7 @@ function timestampFromPattern(timestamp, pattern) {
  *   function(err) where err is the error if any occurred, null otherwise.
  *   Optional. If none provided, an error will be raised if one occurred.
  */
-function addAndUpdateAverages(wsdb, tableName, timestamp, temperature, humidity, callback) {
+function addAndUpdateAverages(wsdb, tableName, timestamp, probeId, temperature, humidity, callback) {
   // Retrieve current average for given timestamp:
   wsdb.dbGet(
     "SELECT timestamp, temperature, humidity, min_temperature, max_temperature, min_humidity, max_humidity, number_values " +
@@ -616,9 +629,10 @@ function addAndUpdateAverages(wsdb, tableName, timestamp, temperature, humidity,
         if (row === undefined) {
           wsdb.dbRun(
             "INSERT INTO " + tableName + "(timestamp, temperature, humidity, min_temperature, max_temperature, min_humidity, max_humidity, number_values) " +
-            "VALUES ($ts, $t, $h, $min_t, $max_t, $min_h, $max_h, $num_values);",
+            "VALUES ($ts, $pid, $t, $h, $min_t, $max_t, $min_h, $max_h, $num_values);",
             {
               $ts: timestamp,
+              $pid: probeId,
               $t: temperature,
               $h: humidity,
               $min_t: temperature,
@@ -665,6 +679,7 @@ function addAndUpdateAverages(wsdb, tableName, timestamp, temperature, humidity,
             "WHERE timestamp = $ts;",
             {
               $t: new_temperature,
+              $pid: probeId,
               $h: new_humidity,
               $min_t: new_min_temperature,
               $max_t: new_max_temperature,
@@ -759,6 +774,7 @@ function deleteAndUpdateAverages(wsdb, tableName, timestamp, callback) {
               if (averages === null) {
                 averages = {
                   nb: 1,
+                  probe_id: rows[i].probe_id,
                   temperature: rows[i].temperature,
                   humidity: rows[i].humidity,
                   min_temperature: rows[i].temperature,
@@ -793,10 +809,11 @@ function deleteAndUpdateAverages(wsdb, tableName, timestamp, callback) {
             // Insert results in database if any:
             if (averages !== null) {
               wsdb.dbRun(
-                "INSERT INTO " + tableName + "(timestamp, temperature, humidity, min_temperature, max_temperature, min_humidity, max_humidity, number_values) " +
-                "VALUES ($ts, $t, $h, $min_t, $max_t, $min_h, $max_h, $num_values);",
+                "INSERT INTO " + tableName + "(timestamp, probeId, temperature, humidity, min_temperature, max_temperature, min_humidity, max_humidity, number_values) " +
+                "VALUES ($ts, $pid, $t, $h, $min_t, $max_t, $min_h, $max_h, $num_values);",
                 {
                   $ts: timestamp_start,
+                  $pid: averages.probe_id,
                   $t: averages.temperature,
                   $h: averages.humidity,
                   $min_t: averages.min_temperature,
